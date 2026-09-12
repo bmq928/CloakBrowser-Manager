@@ -248,6 +248,11 @@ async def test_native_launch_skips_vnc_and_display(monkeypatch, tmp_path: Path):
     assert "--remote-debugging-address=127.0.0.1" in options["args"]
     assert options["headless"] is False
     assert options["extension_paths"] == []
+    # Downloads must be accepted (Playwright denies them by default) and land
+    # in a real folder inside the profile.
+    assert options["accept_downloads"] is True
+    assert options["downloads_path"] == str(tmp_path / "Downloads")
+    assert (tmp_path / "Downloads").is_dir()
 
 
 @pytest.mark.asyncio
@@ -334,6 +339,48 @@ async def test_launch_passes_license_config(monkeypatch, tmp_path: Path):
     assert options["release_channel"] == "preview"
     assert options["extension_paths"] == ["/tmp/extension"]
     assert options["args"].index("--raw-flag") > options["args"].index("--fingerprint-platform=windows")
+
+
+@pytest.mark.asyncio
+async def test_enable_native_downloads_sets_allow_behavior(monkeypatch, tmp_path: Path):
+    import sys
+    import types
+
+    sent: list[dict] = []
+
+    class FakeWS:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def send(self, msg):
+            sent.append(json.loads(msg))
+
+        async def recv(self):
+            return json.dumps({"id": 1, "result": {}})
+
+    fake_ws_mod = types.ModuleType("websockets")
+    fake_ws_mod.connect = lambda *args, **kwargs: FakeWS()  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "websockets", fake_ws_mod)
+
+    manager = BrowserManager(NATIVE_RUNTIME)
+    monkeypatch.setattr(
+        manager,
+        "_fetch_cdp_version",
+        AsyncMock(return_value={
+            "webSocketDebuggerUrl": "ws://127.0.0.1:9999/devtools/browser/abc",
+        }),
+    )
+    await manager._enable_native_downloads(9999, tmp_path / "Downloads")
+
+    assert sent[0]["method"] == "Browser.setDownloadBehavior"
+    assert sent[0]["params"] == {
+        "behavior": "allow",
+        "downloadPath": str(tmp_path / "Downloads"),
+        "eventsEnabled": False,
+    }
 
 
 @pytest.mark.asyncio

@@ -510,6 +510,11 @@ class BrowserManager:
 
             launch_options: dict[str, Any] = {
                 "user_data_dir": profile["user_data_dir"],
+                # Playwright denies every download unless this is set — without
+                # it downloads_path is inert and clicks do nothing (CDP
+                # Browser.setDownloadBehavior: deny). _enable_native_downloads
+                # then takes over naming so files keep real filenames.
+                "accept_downloads": True,
                 "downloads_path": str(downloads_dir),
                 "headless": False,
                 "proxy": proxy,
@@ -550,6 +555,17 @@ class BrowserManager:
                     if lic is not None:
                         raise lic
                     await self._wait_for_cdp(cdp_port, denial_path=denial_path)
+                    # Playwright stores accepted downloads as extensionless
+                    # UUIDs, so switch the browser to native saving (real
+                    # filenames). Best-effort: never fail a launch over it.
+                    try:
+                        await self._enable_native_downloads(cdp_port, downloads_dir)
+                    except Exception as exc:
+                        logger.warning(
+                            "Native download behavior not applied for %s: %s",
+                            profile_id,
+                            exc,
+                        )
                     break
                 except asyncio.CancelledError:
                     if context is not None:
@@ -1106,6 +1122,48 @@ class BrowserManager:
         if lic is not None:
             raise lic
         raise TimeoutError(f"CDP endpoint on 127.0.0.1:{port} was not ready") from last_error
+
+    async def _enable_native_downloads(self, cdp_port: int, downloads_dir: Path) -> None:
+        """Save downloads with their real filenames instead of UUIDs.
+
+        Playwright's accept_downloads interception stores every download as an
+        extensionless UUID inside downloads_path, so chrome://downloads links a
+        file:// URL the browser can't open. Sending Browser.setDownloadBehavior
+        on the browser-level CDP session hands saving back to Chromium, which
+        writes the original filename into the same folder. Applies browser-wide
+        (all tabs, present and future) for the life of this launch.
+        """
+        import websockets
+
+        version = await self._fetch_cdp_version(cdp_port)
+        ws_url = str(version.get("webSocketDebuggerUrl") or "")
+        if not ws_url:
+            raise RuntimeError("CDP version response has no debugger URL")
+
+        async def _apply() -> None:
+            async with websockets.connect(ws_url, max_size=None) as ws:
+                await ws.send(json.dumps({
+                    "id": 1,
+                    "method": "Browser.setDownloadBehavior",
+                    "params": {
+                        "behavior": "allow",
+                        "downloadPath": str(downloads_dir),
+                        "eventsEnabled": False,
+                    },
+                }))
+                raw = await ws.recv()
+                resp = json.loads(raw if isinstance(raw, str) else raw.decode())
+                if "error" in resp:
+                    raise RuntimeError(
+                        f"setDownloadBehavior failed: {resp['error']}"
+                    )
+
+        await asyncio.wait_for(_apply(), timeout=10)
+        logger.info(
+            "Native downloads enabled on 127.0.0.1:%d -> %s",
+            cdp_port,
+            downloads_dir,
+        )
 
     def _build_fingerprint_args(self, profile: dict[str, Any]) -> list[str]:
         """Build extra Chromium args from profile fingerprint settings."""
