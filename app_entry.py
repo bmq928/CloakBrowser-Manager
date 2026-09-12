@@ -59,7 +59,7 @@ def _open_browser_when_ready() -> None:
 
 def _window_state_path():
     # Its own file (not settings.json): save_settings() rewrites the whole
-    # settings dict, so persisting geometry there could clobber a license key
+    # settings dict, so persisting geometry there could clobber a setting
     # the backend saved concurrently. Geometry writes stay isolated here.
     from backend.runtime import resolve_runtime
 

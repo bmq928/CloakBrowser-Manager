@@ -707,53 +707,23 @@ def settings_env(tmp_db: Path, monkeypatch: pytest.MonkeyPatch):
     path = tmp_db / "settings.json"
     monkeypatch.setattr(settings_store, "_settings_path", lambda: path)
     monkeypatch.setattr(main.browser_mgr, "resolve_binary_status", MagicMock())
-    # Known baseline so masking/clearing is deterministic.
-    monkeypatch.setattr(main.browser_mgr, "license_key", None)
     monkeypatch.setattr(main.browser_mgr, "release_channel", "stable")
     return path
 
 
-def test_get_settings_no_key(app_client: TestClient, settings_env: Path):
+def test_get_settings(app_client: TestClient, settings_env: Path):
     resp = app_client.get("/api/settings")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["license_key_set"] is False
-    assert data["license_key_masked"] is None
     assert data["release_channel"] == "stable"
+    assert "license_key" not in data
+    assert "license_key_set" not in data
 
 
-def test_get_settings_masks_key(app_client: TestClient, settings_env: Path):
-    main.browser_mgr.license_key = "cb_ba5f52e422b142a68bc3088f5cbb63aa"
-    resp = app_client.get("/api/settings")
-    data = resp.json()
-    assert data["license_key_set"] is True
-    masked = data["license_key_masked"]
-    # Recognisable but not the whole key.
-    assert masked == "cb_ba…63aa"
-    assert "b142a68bc3088" not in masked
+def test_put_settings_drops_legacy_key(app_client: TestClient, settings_env: Path):
+    settings_env.write_text('{"license_key": "cb_old", "release_channel": "stable"}')
 
-
-def test_put_settings_persists_and_hot_applies(
-    app_client: TestClient, settings_env: Path
-):
-    key = "cb_ba5f52e422b142a68bc3088f5cbb63aa"
-    resp = app_client.put("/api/settings", json={"license_key": key})
-    assert resp.status_code == 200
-    # Hot-applied to the live browser manager.
-    assert main.browser_mgr.license_key == key
-    main.browser_mgr.resolve_binary_status.assert_called_once()
-    # Persisted to settings.json.
-    import json
-
-    assert json.loads(settings_env.read_text())["license_key"] == key
-
-
-def test_put_settings_clears_key(app_client: TestClient, settings_env: Path):
-    key = "cb_ba5f52e422b142a68bc3088f5cbb63aa"
-    main.browser_mgr.license_key = key
-    settings_env.write_text('{"license_key": "%s"}' % key)
-
-    resp = app_client.put("/api/settings", json={"license_key": ""})
+    resp = app_client.put("/api/settings", json={"release_channel": "stable"})
     assert resp.status_code == 200
     assert main.browser_mgr.license_key is None
     import json
@@ -789,9 +759,8 @@ def test_settings_store_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     path = tmp_path / "settings.json"
     monkeypatch.setattr(settings_store, "_settings_path", lambda: path)
     assert settings_store.load_settings() == {}  # missing file → empty
-    settings_store.save_settings({"license_key": "cb_x", "release_channel": "preview"})
+    settings_store.save_settings({"release_channel": "preview"})
     assert settings_store.load_settings() == {
-        "license_key": "cb_x",
         "release_channel": "preview",
     }
 

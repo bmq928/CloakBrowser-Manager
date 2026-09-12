@@ -20,7 +20,7 @@ export function SystemStatusBadge({ status }: { status: SystemStatus | null }) {
   const tier = status.license_tier || "keyless";
   const title =
     tier === "keyless"
-      ? "No license key set. Running the free keyless build. Open Settings to add a key for the latest Pro build."
+      ? "Running the free keyless build."
       : `${TIER_LABEL[tier] ?? tier} license — running ${status.binary_version}`;
 
   return (

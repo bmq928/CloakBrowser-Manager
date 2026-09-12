@@ -21,7 +21,7 @@ dist_arm/
 # OS
 .DS_Store
 
-# Secrets (license key, auth token) — keep .env.example, never .env
+# Secrets (auth token) — keep .env.example, never .env
 .env
 
 # Deploy

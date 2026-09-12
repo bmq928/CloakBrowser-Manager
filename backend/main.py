@@ -110,13 +110,11 @@ diagnostics.install_stderr_tee()
 # token or cookie.
 AUTH_TOKEN: str | None = os.environ.get("AUTH_TOKEN") or None
 
-# App-wide CloakBrowser Pro license. One key per Manager instance — the
-# concurrency-seat pool is per-license, so every launched profile shares it.
-# Release channel picks Stable vs Preview builds.
+# Release channel picks Stable vs Preview builds of the keyless binary.
 #
 # Precedence: environment (incl. values load_env_file pulled from a .env) wins,
-# then the in-app Settings (settings.json). Native users have no .env and set
-# the key in the Settings UI; Docker/CI keep overriding via env vars.
+# then the in-app Settings (settings.json). The Manager always runs the free
+# keyless build — there is no license key to enter.
 _STORED_SETTINGS = load_settings()
 
 
@@ -124,7 +122,6 @@ def _resolve_setting(env_key: str, settings_key: str) -> str | None:
     return os.environ.get(env_key) or _STORED_SETTINGS.get(settings_key) or None
 
 
-LICENSE_KEY: str | None = _resolve_setting("CLOAKBROWSER_LICENSE_KEY", "license_key")
 RELEASE_CHANNEL: str | None = _resolve_setting(
     "CLOAKBROWSER_RELEASE_CHANNEL", "release_channel"
 )
@@ -284,8 +281,8 @@ class AuthMiddleware:
             await response(scope, receive, send)
 
 
-# Singleton browser manager
-browser_mgr = BrowserManager(license_key=LICENSE_KEY, release_channel=RELEASE_CHANNEL)
+# Singleton browser manager — always keyless, no license key entry.
+browser_mgr = BrowserManager(license_key=None, release_channel=RELEASE_CHANNEL)
 
 # Frontend build directory (React production build). bundle_dir() resolves to
 # the PyInstaller extraction root when frozen, else the manager repo root.
@@ -1023,19 +1020,8 @@ async def check_for_update():
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 
-def _mask_key(key: str | None) -> str | None:
-    """Show enough of a license key to recognise it, never the whole thing."""
-    if not key:
-        return None
-    if len(key) <= 9:
-        return "…"
-    return f"{key[:5]}…{key[-4:]}"
-
-
 def _settings_response() -> SettingsResponse:
     return SettingsResponse(
-        license_key_set=bool(browser_mgr.license_key),
-        license_key_masked=_mask_key(browser_mgr.license_key),
         release_channel=(browser_mgr.release_channel or "stable"),
     )
 
@@ -1078,22 +1064,17 @@ async def get_settings():
 
 @app.put("/api/settings", response_model=StatusResponse)
 async def update_settings(payload: SettingsUpdate):
-    """Persist license key / release channel and hot-apply without a restart.
+    """Persist the release channel and hot-apply without a restart.
 
     Returns the refreshed system status (tier + resolved binary version) so the
-    top-bar badge updates immediately. Re-resolving may download the Pro build,
+    top-bar badge updates immediately. Re-resolving may download the build,
     so it runs off the event loop; the request completes when it's ready.
     """
     stored = load_settings()
-
-    if payload.license_key is not None:
-        key = payload.license_key.strip()
-        if key:
-            stored["license_key"] = key
-            browser_mgr.license_key = key
-        else:  # empty string = clear the key (back to keyless)
-            stored.pop("license_key", None)
-            browser_mgr.license_key = None
+    # Drop any license key persisted by older versions — the Manager is
+    # keyless-only now and never reads it back.
+    stored.pop("license_key", None)
+    browser_mgr.license_key = None
 
     if payload.release_channel is not None:
         channel = payload.release_channel.strip().lower()

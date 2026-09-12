@@ -2,7 +2,7 @@
 
 Dependency-free. Values already present in the environment win (so Docker's
 injected container env, or a real shell export, overrides the file). Used for
-the app-wide CloakBrowser license key and release channel — see README.
+the release channel and auth token — see README.
 """
 
 from __future__ import annotations
@@ -14,8 +14,8 @@ from pathlib import Path
 
 def _default_env_path() -> Path:
     # Frozen native app: look for a .env next to the executable (optional —
-    # native users set the key in-app; see settings_store). From source, the
-    # manager root is one level up from the backend package.
+    # native users configure the channel in-app; see settings_store). From
+    # source, the manager root is one level up from the backend package.
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent / ".env"
     return Path(__file__).resolve().parent.parent / ".env"

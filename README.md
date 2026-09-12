@@ -41,7 +41,7 @@ Download the installer from the [latest release](https://github.com/CloakHQ/Cloa
 
 No Python, Node, or git required. The Manager starts on `127.0.0.1:8080` and opens in your default browser. On first launch it downloads the CloakBrowser engine. Profiles are stored in `%LOCALAPPDATA%\CloakBrowser Manager` on Windows and `~/Library/Application Support/CloakBrowser Manager` on macOS; a `logs/manager.log` in that folder records what happened if you need it.
 
-Open **Settings** (gear icon, top right) to add your license key and pick the Stable or Preview channel.
+Open **Settings** (gear icon, top right) to pick the Stable or Preview channel.
 
 #### Run from source (developers)
 
@@ -71,21 +71,16 @@ Open [http://localhost:8080](http://localhost:8080), create a profile, and click
 
 > **Early alpha** — this project is under active development. Expect bugs. If you find one, please [open an issue](https://github.com/CloakHQ/CloakBrowser-Manager/issues) and attach the log so we can help. On Windows/macOS it's `logs/manager.log` in the data folder (`%LOCALAPPDATA%\CloakBrowser Manager` / `~/Library/Application Support/CloakBrowser Manager`); on Linux/Docker use `docker logs <container>`.
 
-## CloakBrowser license key
+## Engine channel
 
-The Manager runs on the CloakBrowser engine, so it needs a key.<br>
-[Get a free one with GitHub](https://cloakbrowser.dev/free) to run one profile at a time on the current build.<br>
-[Paid plans](https://cloakbrowser.dev) raise how many profiles run at the same time, from a handful to thousands.
+The Manager runs on the free keyless CloakBrowser engine — no key needed.
 
-Add your key once and every profile uses it.
+**Native app (Windows/macOS):** open **Settings** (gear icon, top right), choose the Stable or Preview channel, and Save. It applies immediately, no restart. The badge in the top bar shows which tier and binary version are active.
 
-**Native app (Windows/macOS):** open **Settings** (gear icon, top right), paste your key, choose the Stable or Preview channel, and Save. It applies immediately, no restart. The badge in the top bar shows which tier and binary version are active.
-
-**Docker:** open **Settings** (gear icon, top right) the same way, paste your key, and Save. It applies immediately and is stored in the mounted `/data` volume, so it persists across restarts and image updates. For automated or headless setups, pass it at `docker run` instead:
+**Docker:** open **Settings** (gear icon, top right) the same way and Save. It applies immediately and is stored in the mounted `/data` volume, so it persists across restarts and image updates. For automated or headless setups, pass the channel at `docker run` instead:
 
 ```bash
 docker run -p 127.0.0.1:8080:8080 -v cloakprofiles:/data \
-  -e CLOAKBROWSER_LICENSE_KEY=cb_your_key_here \
   -e CLOAKBROWSER_RELEASE_CHANNEL=preview \
   cloakhq/cloakbrowser-manager
 ```
@@ -98,7 +93,6 @@ cp .env.example .env
 
 ```bash
 # .env
-CLOAKBROWSER_LICENSE_KEY=cb_your_key_here
 CLOAKBROWSER_RELEASE_CHANNEL=stable   # or: preview
 ```
 

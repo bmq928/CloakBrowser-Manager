@@ -116,13 +116,10 @@ export interface UpdateInfo {
 }
 
 export interface ManagerSettings {
-  license_key_set: boolean;
-  license_key_masked: string | null;
   release_channel: string; // "stable" | "preview"
 }
 
 export interface SettingsUpdate {
-  license_key?: string | null; // omit = unchanged; "" = clear
   release_channel?: string | null;
 }
 

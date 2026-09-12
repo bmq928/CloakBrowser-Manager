@@ -458,6 +458,9 @@ class BrowserManager:
 
             user_data_dir = Path(profile["user_data_dir"])
 
+            downloads_dir = user_data_dir / "Downloads"
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+
             # Docker can leave stale locks after an unclean container exit. Native
             # mode must let Chromium arbitrate profile ownership itself.
             if self.runtime.runtime_mode == "docker":
@@ -507,6 +510,7 @@ class BrowserManager:
 
             launch_options: dict[str, Any] = {
                 "user_data_dir": profile["user_data_dir"],
+                "downloads_path": str(downloads_dir),
                 "headless": False,
                 "proxy": proxy,
                 "args": extra_args,
