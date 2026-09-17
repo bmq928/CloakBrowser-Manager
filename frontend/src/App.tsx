@@ -94,8 +94,11 @@ interface AppContentProps {
 }
 
 function AppContent({ authRequired, onLogout }: AppContentProps) {
-  const { profiles, loading, error, create, update, remove, reorder, launch, stop, reset, duplicate } = useProfiles();
+  const { profiles, loading, error, create, update, remove, reorder, launch, stop, launchMany, stopMany, reset, duplicate } = useProfiles();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = useState<string | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
   const [view, setView] = useState<View>("empty");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -140,14 +143,33 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selectedLastErrorMsg]);
 
-  const handleSelect = useCallback((id: string) => {
-    setSelectedId(id);
-    const profile = profiles.find((p) => p.id === id);
+  const handleSelectionChange = useCallback((ids: string[], focusedId: string | null) => {
+    setSelectedIds(ids);
+    setSelectedId(focusedId);
+    setBulkError(null);
+    if (!focusedId) {
+      setView("empty");
+      return;
+    }
+    const profile = profiles.find((p) => p.id === focusedId);
     setView(profile?.status === "running" ? "view" : "edit");
   }, [profiles]);
 
+  // Drop ids that vanished (deleted elsewhere); reset detail if focused is gone.
+  useEffect(() => {
+    if (loading) return;
+    setSelectedIds((prev) => prev.filter((id) => profiles.some((p) => p.id === id)));
+    if (selectedId && !profiles.some((p) => p.id === selectedId)) {
+      setSelectedId(null);
+      setSelectedIds([]);
+      setView("empty");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles, loading]);
+
   const handleNew = useCallback(() => {
     setSelectedId(null);
+    setSelectedIds([]);
     setView("create");
   }, []);
 
@@ -155,6 +177,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     const profile = await create(data);
     if (profile) {
       setSelectedId(profile.id);
+      setSelectedIds([profile.id]);
       setView("edit");
     }
   }, [create]);
@@ -168,6 +191,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     if (!selectedId) return;
     await remove(selectedId);
     setSelectedId(null);
+    setSelectedIds([]);
     setView("empty");
   }, [selectedId, remove]);
 
@@ -201,6 +225,51 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     setView("edit");
   }, [selectedId, stop]);
 
+  const reportBulkFailures = useCallback((failed: { id: string; message: string; status?: number; reason?: string; upgradeUrl?: string }[], verb: string) => {
+    if (failed.length === 0) return;
+    // A license/seat denial still gets the top banner with its upgrade CTA.
+    const denial = failed.find((f) => f.status === 402 || f.status === 403);
+    if (denial) {
+      setLaunchError({
+        message: denial.message,
+        reason: (denial.reason as LaunchDenial["reason"]) ?? "license",
+        upgrade_url: denial.upgradeUrl,
+      });
+    }
+    const names = failed.map((f) => profiles.find((p) => p.id === f.id)?.name ?? "profile");
+    setBulkError(`Failed to ${verb} ${failed.length}: ${names.join(", ")}`);
+  }, [profiles]);
+
+  const handleBulkStart = useCallback(async (ids: string[]) => {
+    if (ids.length === 0 || bulkBusy !== null) return;
+    setBulkError(null);
+    setLaunchError(null);
+    setBulkBusy(`Starting 1 of ${ids.length}…`);
+    const failed = await launchMany(ids, (done, total) =>
+      setBulkBusy(done < total ? `Starting ${done + 1} of ${total}…` : "Finishing…"),
+    );
+    setBulkBusy(null);
+    const failedIds = new Set(failed.map((f) => f.id));
+    if (selectedId && ids.includes(selectedId) && !failedIds.has(selectedId)) {
+      setView("view");
+    }
+    reportBulkFailures(failed, "start");
+  }, [bulkBusy, launchMany, selectedId, reportBulkFailures]);
+
+  const handleBulkStop = useCallback(async (ids: string[]) => {
+    if (ids.length === 0 || bulkBusy !== null) return;
+    setBulkError(null);
+    setBulkBusy(`Stopping 1 of ${ids.length}…`);
+    const failed = await stopMany(ids, (done, total) =>
+      setBulkBusy(done < total ? `Stopping ${done + 1} of ${total}…` : "Finishing…"),
+    );
+    setBulkBusy(null);
+    if (selectedId && ids.includes(selectedId)) {
+      setView("edit");
+    }
+    reportBulkFailures(failed, "stop");
+  }, [bulkBusy, stopMany, selectedId, reportBulkFailures]);
+
   const handleReset = useCallback(async () => {
     if (!selectedId) return;
     await reset(selectedId);
@@ -212,6 +281,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
     const profile = await duplicate(selectedId, includeBrowserState);
     if (profile) {
       setSelectedId(profile.id);
+      setSelectedIds([profile.id]);
       setView("edit");
     }
   }, [selectedId, duplicate]);
@@ -266,9 +336,14 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
           <ProfileList
             profiles={profiles}
             selectedId={selectedId}
-            onSelect={handleSelect}
+            selectedIds={selectedIds}
+            onSelectionChange={handleSelectionChange}
             onNew={handleNew}
             onReorder={reorder}
+            onBulkStart={handleBulkStart}
+            onBulkStop={handleBulkStop}
+            bulkBusy={bulkBusy}
+            bulkError={bulkError}
           />
         </div>
       )}
@@ -289,6 +364,11 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
               <div className="flex items-center gap-2">
                 <StatusIndicator status={selected.status} size="md" />
                 <span className="text-sm font-medium">{selected.name}</span>
+                {selectedIds.length > 1 && (
+                  <span className="text-xs text-gray-500">
+                    +{selectedIds.length - 1} more selected
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -366,6 +446,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
               onDuplicate={handleDuplicate}
               onCancel={() => {
                 setSelectedId(null);
+                setSelectedIds([]);
                 setView("empty");
               }}
             />

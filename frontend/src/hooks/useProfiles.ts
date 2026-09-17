@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type Profile, type ProfileCreateData } from "../lib/api";
+import { api, ApiError, type Profile, type ProfileCreateData } from "../lib/api";
+
+export interface BulkFailure {
+  id: string;
+  message: string;
+  status?: number;
+  reason?: string;
+  upgradeUrl?: string;
+}
 
 export function useProfiles() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -107,6 +115,56 @@ export function useProfiles() {
     [refresh],
   );
 
+  // Bulk start/stop, run sequentially (browser boot is heavy; parallel
+  // launches hammer the machine) with one refresh at the end. Per-item
+  // failures are collected, not thrown — the caller surfaces them.
+  const launchMany = useCallback(
+    async (ids: string[], onProgress?: (done: number, total: number) => void) => {
+      const failed: BulkFailure[] = [];
+      let done = 0;
+      for (const id of ids) {
+        try {
+          await api.launchProfile(id);
+        } catch (err) {
+          failed.push({
+            id,
+            message: err instanceof Error ? err.message : "Failed to launch profile",
+            ...(err instanceof ApiError
+              ? { status: err.status, reason: err.reason, upgradeUrl: err.upgradeUrl }
+              : {}),
+          });
+        }
+        done += 1;
+        onProgress?.(done, ids.length);
+      }
+      await refresh();
+      return failed;
+    },
+    [refresh],
+  );
+
+  const stopMany = useCallback(
+    async (ids: string[], onProgress?: (done: number, total: number) => void) => {
+      const failed: BulkFailure[] = [];
+      let done = 0;
+      for (const id of ids) {
+        try {
+          await api.stopProfile(id);
+        } catch (err) {
+          failed.push({
+            id,
+            message: err instanceof Error ? err.message : "Failed to stop profile",
+          });
+        }
+        done += 1;
+        onProgress?.(done, ids.length);
+      }
+      await refresh();
+      return failed;
+    },
+    [refresh],
+  );
+
   // Wipe browser state + re-roll fingerprint. Stays stopped — the profile keeps
   // its config (proxy, locale, bookmarks, default search) and takes a fresh
   // identity; the user launches it when ready.
@@ -139,5 +197,5 @@ export function useProfiles() {
     [],
   );
 
-  return { profiles, loading, error, refresh, create, update, remove, reorder, launch, stop, reset, duplicate };
+  return { profiles, loading, error, refresh, create, update, remove, reorder, launch, stop, launchMany, stopMany, reset, duplicate };
 }

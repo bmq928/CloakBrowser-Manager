@@ -2,19 +2,23 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useProfiles } from "./useProfiles";
 
-// Mock the api module
-vi.mock("../lib/api", () => ({
-  api: {
-    listProfiles: vi.fn(),
-    createProfile: vi.fn(),
-    updateProfile: vi.fn(),
-    deleteProfile: vi.fn(),
-    reorderProfiles: vi.fn(),
-    launchProfile: vi.fn(),
-    stopProfile: vi.fn(),
-    duplicateProfile: vi.fn(),
-  },
-}));
+// Mock the api module (keep ApiError + types from the real module)
+vi.mock("../lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/api")>();
+  return {
+    ...actual,
+    api: {
+      listProfiles: vi.fn(),
+      createProfile: vi.fn(),
+      updateProfile: vi.fn(),
+      deleteProfile: vi.fn(),
+      reorderProfiles: vi.fn(),
+      launchProfile: vi.fn(),
+      stopProfile: vi.fn(),
+      duplicateProfile: vi.fn(),
+    },
+  };
+});
 
 import { api } from "../lib/api";
 
@@ -184,5 +188,48 @@ describe("useProfiles", () => {
     const { result } = renderHook(() => useProfiles());
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("Network error");
+  });
+
+  it("launchMany runs sequentially, collects failures, reports progress, refreshes once", async () => {
+    const p2 = { ...fakeProfile, id: "p2", name: "Second" };
+    mockApi.listProfiles.mockResolvedValue([fakeProfile, p2]);
+    mockApi.launchProfile
+      .mockResolvedValueOnce({ profile_id: "abc-123" })
+      .mockRejectedValueOnce(new Error("boom"));
+
+    const { result } = renderHook(() => useProfiles());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    mockApi.listProfiles.mockClear();
+
+    const progress: [number, number][] = [];
+    let failed: unknown;
+    await act(async () => {
+      failed = await result.current.launchMany(["abc-123", "p2"], (done, total) =>
+        progress.push([done, total]),
+      );
+    });
+
+    expect(mockApi.launchProfile).toHaveBeenNthCalledWith(1, "abc-123");
+    expect(mockApi.launchProfile).toHaveBeenNthCalledWith(2, "p2");
+    expect(progress).toEqual([[1, 2], [2, 2]]);
+    expect(failed).toHaveLength(1);
+    expect((failed as { id: string }[])[0].id).toBe("p2");
+    // One refresh at the end, not one per profile.
+    expect(mockApi.listProfiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("stopMany stops each profile and returns no failures on success", async () => {
+    mockApi.stopProfile.mockResolvedValue({ ok: true });
+
+    const { result } = renderHook(() => useProfiles());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let failed: unknown;
+    await act(async () => {
+      failed = await result.current.stopMany(["abc-123"]);
+    });
+
+    expect(mockApi.stopProfile).toHaveBeenCalledWith("abc-123");
+    expect(failed).toEqual([]);
   });
 });
