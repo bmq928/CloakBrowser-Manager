@@ -453,7 +453,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
           )}
 
           {view === "view" && selected && selected.status === "running" && (
-            selected.viewer_mode === "vnc" ? (
+            selected.viewer_mode === "vnc" && !selected.headless ? (
               <ProfileViewer
                 key={selected.id}
                 profileId={selected.id}
@@ -469,6 +469,7 @@ function AppContent({ authRequired, onLogout }: AppContentProps) {
                 profileName={selected.name}
                 cdpUrl={selected.cdp_url}
                 capturePreview={selected.capture_preview}
+                headless={selected.headless}
               />
             )
           )}

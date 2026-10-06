@@ -20,6 +20,12 @@ describe("NativeWindowStatus", () => {
     expect(screen.getByText(/Work is running directly/)).toBeTruthy();
   });
 
+  it("reports a headless run instead of a native window", () => {
+    render(<NativeWindowStatus profileName="Work" cdpUrl={null} headless />);
+    expect(screen.getByText("Running headless")).toBeTruthy();
+    expect(screen.getByText(/Work is running without a visible window/)).toBeTruthy();
+  });
+
   it("copies the Manager CDP endpoint", async () => {
     render(
       <NativeWindowStatus

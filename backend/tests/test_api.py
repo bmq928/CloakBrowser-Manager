@@ -64,7 +64,7 @@ def test_create_profile_invalid_gpu_family(app_client: TestClient):
 
 
 def test_removed_profile_fields_and_null_gpu_family_are_rejected(app_client: TestClient):
-    legacy = app_client.post("/api/profiles", json={"name": "Legacy", "headless": True})
+    legacy = app_client.post("/api/profiles", json={"name": "Legacy", "platform": "macos"})
     assert legacy.status_code == 422
 
     created = app_client.post("/api/profiles", json={"name": "GPU"})
@@ -73,6 +73,21 @@ def test_removed_profile_fields_and_null_gpu_family_are_rejected(app_client: Tes
         json={"gpu_family": None},
     )
     assert response.status_code == 422
+
+
+def test_headless_defaults_off_and_round_trips(app_client: TestClient):
+    created = app_client.post("/api/profiles", json={"name": "Windowed"})
+    assert created.json()["headless"] is False
+
+    headless = app_client.post("/api/profiles", json={"name": "Headless", "headless": True})
+    assert headless.status_code == 201
+    pid = headless.json()["id"]
+    assert headless.json()["headless"] is True
+
+    toggled = app_client.put(f"/api/profiles/{pid}", json={"headless": False})
+    assert toggled.status_code == 200
+    assert toggled.json()["headless"] is False
+    assert app_client.get(f"/api/profiles/{pid}").json()["headless"] is False
 
 
 def test_get_profile(app_client: TestClient):

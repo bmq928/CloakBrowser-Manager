@@ -452,8 +452,11 @@ class BrowserManager:
         ws_port: int | None = None
         cdp_port: int | None = None
         context: Any | None = None
+        # Headless profiles have no window to attach a display or a VNC viewer
+        # to, so they skip the whole X/novnc path and run windowless.
+        headless = bool(profile.get("headless", False))
         try:
-            if self.runtime.viewer_mode == "vnc":
+            if self.runtime.viewer_mode == "vnc" and not headless:
                 display, ws_port = await self.vnc.allocate()
 
             user_data_dir = Path(profile["user_data_dir"])
@@ -516,7 +519,7 @@ class BrowserManager:
                 # then takes over naming so files keep real filenames.
                 "accept_downloads": True,
                 "downloads_path": str(downloads_dir),
-                "headless": False,
+                "headless": headless,
                 "proxy": proxy,
                 "args": extra_args,
                 "timezone": profile.get("timezone") or None,
@@ -609,7 +612,7 @@ class BrowserManager:
             if context is None or cdp_port is None:
                 raise RuntimeError(f"Browser startup did not complete for profile {profile_id}")
 
-            if self.runtime.viewer_mode == "vnc":
+            if self.runtime.viewer_mode == "vnc" and not headless:
                 # Capture copied text so the Manager clipboard endpoint can read it.
                 clipboard_init_js = """
                     window.__clipboardText = '';
@@ -660,9 +663,10 @@ class BrowserManager:
                 )
 
             logger.info(
-                "Launched profile %s (runtime=%s, display=%s, ws_port=%s, cdp_port=%d)",
+                "Launched profile %s (runtime=%s, headless=%s, display=%s, ws_port=%s, cdp_port=%d)",
                 profile_id,
                 self.runtime.runtime_mode,
+                headless,
                 f":{display}" if display is not None else "native",
                 ws_port,
                 cdp_port,

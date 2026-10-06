@@ -251,8 +251,8 @@ async def test_native_launch_skips_vnc_and_display(monkeypatch, tmp_path: Path):
     # Downloads must be accepted (Playwright denies them by default) and land
     # in a real folder inside the profile.
     assert options["accept_downloads"] is True
-    assert options["downloads_path"] == str(tmp_path / "Downloads")
-    assert (tmp_path / "Downloads").is_dir()
+    assert options["downloads_path"] == str(tmp_path / "profile-1" / "Downloads")
+    assert (tmp_path / "profile-1" / "Downloads").is_dir()
 
 
 @pytest.mark.asyncio
@@ -314,6 +314,36 @@ async def test_docker_launch_keeps_vnc_display(monkeypatch, tmp_path: Path):
     assert options["env"]["DISPLAY"] == ":100"
     assert options["viewport"] == {"width": 1920, "height": 947}
     assert "--use-angle=swiftshader" in options["args"]
+
+
+@pytest.mark.asyncio
+async def test_headless_launch_skips_vnc_and_passes_headless(monkeypatch, tmp_path: Path):
+    """A headless profile has no window, so it must not allocate a display,
+    start Xvnc, or inject the VNC clipboard bridge."""
+    from backend import browser_manager as module
+
+    context = MagicMock(pages=[])
+    context.add_init_script = AsyncMock()
+    manager = BrowserManager(DOCKER_RUNTIME)
+    manager.vnc.allocate = AsyncMock(return_value=(100, 6100))
+    manager.vnc.start_vnc = AsyncMock()
+    manager._wait_for_cdp = AsyncMock()
+    launch = AsyncMock(return_value=context)
+    monkeypatch.setattr(module, "launch_persistent_context_async", launch)
+
+    profile = _launch_profile(tmp_path)
+    profile["headless"] = True
+    running = await manager.launch(profile)
+
+    assert running.display is None
+    assert running.ws_port is None
+    manager.vnc.allocate.assert_not_awaited()
+    manager.vnc.start_vnc.assert_not_awaited()
+    context.add_init_script.assert_not_awaited()
+    options = launch.await_args.kwargs
+    assert options["headless"] is True
+    assert "env" not in options
+    assert "viewport" not in options
 
 
 @pytest.mark.asyncio

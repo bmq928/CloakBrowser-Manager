@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+.github
+
+# Node frontend build artifacts / deps — rebuilt inside image
+frontend/node_modules
+frontend/dist
+node_modules
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Local config / secrets / data
+.env
+.beads
+.plans
+debug
+dist_native/
+build_native/
+dist_arm/
+.venv-build/

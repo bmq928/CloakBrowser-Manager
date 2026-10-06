@@ -57,6 +57,7 @@ export function ProfileForm({ profile, hostOs, viewerMode, onSave, onDelete, onR
     set_google_default: true,
     capture_preview: true,
     restore_session: true,
+    headless: false,
     extension_paths: [],
     launch_args: [],
     tags: [],
@@ -109,6 +110,7 @@ export function ProfileForm({ profile, hostOs, viewerMode, onSave, onDelete, onR
         set_google_default: profile.set_google_default,
         capture_preview: profile.capture_preview,
         restore_session: profile.restore_session,
+        headless: profile.headless ?? false,
         launch_args: profile.launch_args ?? [],
         notes: profile.notes,
         tags: profile.tags ?? [],
@@ -591,6 +593,20 @@ export function ProfileForm({ profile, hostOs, viewerMode, onSave, onDelete, onR
         <section>
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Behavior</h3>
           <div className="space-y-3">
+            <label className="flex items-start gap-2 text-sm text-gray-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.headless ?? false}
+                onChange={(e) => set("headless", e.target.checked)}
+                className="rounded border-border bg-surface-2 mt-0.5"
+              />
+              <span>
+                Run headless (no visible browser window)
+                <span className="block text-xs text-gray-500">
+                  Runs without a window or{viewerMode === "vnc" ? " VNC viewer" : " screen"}, so it uses less memory. Automation stays available through Manager CDP.
+                </span>
+              </span>
+            </label>
             <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
               <input
                 type="checkbox"

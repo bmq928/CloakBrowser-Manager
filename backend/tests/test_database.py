@@ -44,9 +44,9 @@ def test_init_db_rebuilds_old_schema_preserving_profile_and_tags(tmp_db: Path):
     with db.get_db() as conn:
         conn.executescript("""
             DROP TABLE profile_tags; DROP TABLE profiles;
-            CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, fingerprint_seed INTEGER NOT NULL, proxy TEXT, platform TEXT, user_agent TEXT, gpu_vendor TEXT, gpu_renderer TEXT, hardware_concurrency INTEGER, headless BOOLEAN, user_data_dir TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+            CREATE TABLE profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, fingerprint_seed INTEGER NOT NULL, proxy TEXT, platform TEXT, user_agent TEXT, gpu_vendor TEXT, gpu_renderer TEXT, hardware_concurrency INTEGER, user_data_dir TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
             CREATE TABLE profile_tags (profile_id TEXT REFERENCES profiles(id) ON DELETE CASCADE, tag TEXT NOT NULL, color TEXT, PRIMARY KEY(profile_id, tag));
-            INSERT INTO profiles VALUES ('old', 'Retained', 42, 'http://proxy:1', 'macos', 'Legacy UA', 'NVIDIA', 'Legacy GPU', 16, 1, '/data/old', 'created', 'updated');
+            INSERT INTO profiles VALUES ('old', 'Retained', 42, 'http://proxy:1', 'macos', 'Legacy UA', 'NVIDIA', 'Legacy GPU', 16, '/data/old', 'created', 'updated');
             INSERT INTO profile_tags VALUES ('old', 'keep', '#abc');
         """)
         conn.commit()
@@ -57,13 +57,14 @@ def test_init_db_rebuilds_old_schema_preserving_profile_and_tags(tmp_db: Path):
     assert profile["tags"] == [{"tag": "keep", "color": "#abc"}]
     assert profile["gpu_family"] == "nvidia"
     assert profile["geoip"] == 1
+    assert profile["headless"] == 0  # new column, default off
     with db.get_db() as conn:
         columns = {row[1] for row in conn.execute("PRAGMA table_info(profiles)")}
     assert {
         "platform", "user_agent", "gpu_vendor", "gpu_renderer",
-        "hardware_concurrency", "headless",
+        "hardware_concurrency",
     }.isdisjoint(columns)
-    assert {"launch_args", "extension_paths", "allow_3p_cookies"}.issubset(columns)
+    assert {"launch_args", "extension_paths", "allow_3p_cookies", "headless"}.issubset(columns)
 
 
 # ── create_profile ───────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ def test_create_profile_minimal(tmp_db: Path):
     assert 10000 <= p["fingerprint_seed"] <= 99999  # random default
     assert p["user_data_dir"].startswith(str(tmp_db))
     assert p["gpu_family"] == "auto"
+    assert p["headless"] == 0  # opt-in: windowed by default
     assert p["created_at"] is not None
     assert p["updated_at"] is not None
 

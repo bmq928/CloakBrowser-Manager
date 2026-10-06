@@ -26,6 +26,7 @@ function profile(status: Profile["status"]): Profile {
     set_google_default: true,
     capture_preview: true,
     restore_session: true,
+    headless: false,
     notes: null,
     tags: [],
     user_data_dir: "/data/profiles/p1",
@@ -49,6 +50,28 @@ function renderForm(status: Profile["status"]) {
   );
   return onDuplicate;
 }
+
+describe("ProfileForm headless option", () => {
+  it("defaults to unchecked and saves the toggled value", () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ProfileForm
+        profile={profile("stopped")}
+        hostOs="linux"
+        viewerMode="vnc"
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole("checkbox", { name: /Run headless/i }) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: /Save/i }));
+
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ headless: true }));
+  });
+});
 
 describe("ProfileForm duplicate split button", () => {
   afterEach(() => vi.unstubAllGlobals());
